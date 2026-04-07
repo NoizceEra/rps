@@ -41,9 +41,13 @@ jobs:
 
       - name: Build RPS program
         run: |
-          # Verify tools are available
+          # Use system nightly cargo (supports edition2024) instead of
+          # the bundled Cargo 1.79 that ships with platform-tools v1.43
+          export CARGO=$(rustup which --toolchain nightly cargo)
+          echo "Using cargo: $CARGO"
+          $CARGO --version
           solana --version
-          # Build using cargo-build-sbf directly (most reliable)
+          # Build using cargo-build-sbf with overridden cargo
           cargo-build-sbf --manifest-path programs/rps/Cargo.toml
           # List output
           ls -la target/deploy/
