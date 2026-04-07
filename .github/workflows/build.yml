@@ -9,7 +9,6 @@ on:
 
 env:
   SOLANA_VERSION: "2.1.0"
-  ANCHOR_VERSION: "0.32.1"
   RUST_TOOLCHAIN: "nightly"
 
 jobs:
@@ -39,15 +38,6 @@ jobs:
         run: |
           sh -c "$(curl -sSfL https://release.anza.xyz/v${{ env.SOLANA_VERSION }}/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
-
-      - name: Install Anchor CLI via AVM
-        run: |
-          cargo install --git https://github.com/coral-xyz/anchor avm --locked --force || \
-          cargo install avm --locked --force || true
-          avm install ${{ env.ANCHOR_VERSION }} || true
-          avm use ${{ env.ANCHOR_VERSION }} || true
-          # Fallback: install anchor-cli directly
-          cargo install --git https://github.com/coral-xyz/anchor --tag v${{ env.ANCHOR_VERSION }} anchor-cli --locked --force || true
 
       - name: Build RPS program
         run: |
