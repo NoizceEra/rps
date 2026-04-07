@@ -1,0 +1,80 @@
+name: Build RPS Solana Program
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  SOLANA_VERSION: "2.1.0"
+  ANCHOR_VERSION: "0.32.1"
+  RUST_TOOLCHAIN: "nightly"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust (nightly)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+          components: rustfmt, clippy
+
+      - name: Cache Rust deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Install Solana CLI (Agave)
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v${{ env.SOLANA_VERSION }}/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+
+      - name: Install Anchor CLI via AVM
+        run: |
+          cargo install --git https://github.com/coral-xyz/anchor avm --locked --force || \
+          cargo install avm --locked --force || true
+          avm install ${{ env.ANCHOR_VERSION }} || true
+          avm use ${{ env.ANCHOR_VERSION }} || true
+          # Fallback: install anchor-cli directly
+          cargo install --git https://github.com/coral-xyz/anchor --tag v${{ env.ANCHOR_VERSION }} anchor-cli --locked --force || true
+
+      - name: Build RPS program
+        run: |
+          # Verify tools are available
+          solana --version
+          # Build using cargo-build-sbf directly (most reliable)
+          cargo-build-sbf --manifest-path programs/rps/Cargo.toml
+          # List output
+          ls -la target/deploy/
+
+      - name: Extract Program ID
+        run: |
+          echo "Program ID from IDL:"
+          grep "PROGRAM_ID\|address" app/src/idl.ts | head -3
+
+      - name: Upload program binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: rps-program
+          path: |
+            target/deploy/rps.so
+            target/idl/rps.json
+          retention-days: 30
+
+      - name: Upload keypair (for deployment)
+        uses: actions/upload-artifact@v4
+        with:
+          name: rps-keypair
+          path: target/deploy/rps-keypair.json
+          retention-days: 7
