@@ -8,8 +8,9 @@ on:
   workflow_dispatch:
 
 env:
-  SOLANA_VERSION: "2.1.0"
-  RUST_TOOLCHAIN: "nightly"
+  # Agave 3.1.12 ships platform-tools v1.52 (Rust 1.89.0) which supports
+  # edition2024 and satisfies rust-version ≥ 1.85 for modern crates
+  SOLANA_VERSION: "3.1.12"
 
 jobs:
   build:
@@ -17,12 +18,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Install Rust (nightly)
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: nightly
-          components: rustfmt, clippy
 
       - name: Cache Rust deps
         uses: actions/cache@v4
@@ -41,10 +36,9 @@ jobs:
           path: ~/.local/share/solana
           key: ${{ runner.os }}-solana-${{ env.SOLANA_VERSION }}
 
-      - name: Install Solana CLI (Agave)
+      - name: Install Solana CLI (Agave ${{ env.SOLANA_VERSION }})
         if: steps.cache-solana.outputs.cache-hit != 'true'
         run: |
-          # Download tarball from GitHub CDN (faster/more reliable than anza.xyz installer)
           curl -L --retry 3 \
             "https://github.com/anza-xyz/agave/releases/download/v${{ env.SOLANA_VERSION }}/solana-release-x86_64-unknown-linux-gnu.tar.bz2" \
             -o /tmp/solana.tar.bz2
@@ -56,41 +50,6 @@ jobs:
       - name: Add Solana to PATH
         run: echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
 
-      # Cache patched platform-tools so we don't re-download + re-patch on every run
-      - name: Cache platform-tools (patched)
-        id: cache-platform-tools
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/solana
-          key: ${{ runner.os }}-platform-tools-patched-${{ env.SOLANA_VERSION }}
-
-      - name: Download and patch platform-tools
-        if: steps.cache-platform-tools.outputs.cache-hit != 'true'
-        run: |
-          # Trigger platform-tools download — the build will fail on edition2024
-          # but platform-tools (~500MB) will be fully downloaded first
-          cargo-build-sbf --manifest-path programs/rps/Cargo.toml 2>&1 | head -20 || true
-
-          # Locate the platform-tools cargo binary
-          PLATFORM_CARGO=$(find ~/.cache/solana -name cargo \
-            -path "*/rust/bin/cargo" 2>/dev/null | head -1)
-
-          if [ -z "$PLATFORM_CARGO" ]; then
-            echo "ERROR: could not find platform-tools cargo"
-            find ~/.cache/solana -type f -name "cargo" 2>/dev/null || true
-            exit 1
-          fi
-
-          # Replace platform-tools cargo 1.79 (can't parse edition2024)
-          # with nightly cargo (supports edition2024 manifests).
-          # cargo-build-sbf still uses platform-tools rustc for SBF compilation
-          # because it sets RUSTC= before invoking cargo.
-          NIGHTLY_CARGO=$(rustup which --toolchain nightly cargo)
-          OLD_VER=$("$PLATFORM_CARGO" --version)
-          cp "$NIGHTLY_CARGO" "$PLATFORM_CARGO"
-          NEW_VER=$("$PLATFORM_CARGO" --version)
-          echo "Patched platform-tools cargo: $OLD_VER → $NEW_VER"
-
       - name: Build RPS program
         run: |
           solana --version
@@ -99,7 +58,7 @@ jobs:
 
       - name: Extract Program ID
         run: |
-          echo "Keypair-derived Program ID:"
+          echo "Program ID:"
           solana-keygen pubkey target/deploy/rps-keypair.json
 
       - name: Upload program binary

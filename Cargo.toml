@@ -13,8 +13,3 @@ opt-level = 3
 incremental = false
 codegen-units = 1
 
-[patch.crates-io]
-# Vendor toml_edit with edition="2021" so Cargo 1.79 (Solana platform-tools)
-# can parse its manifest (edition2024 support was added in Cargo 1.85)
-toml_edit = { path = "vendor/toml_edit" }
-toml_datetime = { path = "vendor/toml_datetime" }
