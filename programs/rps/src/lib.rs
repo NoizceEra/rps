@@ -31,6 +31,8 @@ pub mod rps {
         game.game_id = game_id;
         game.last_action = Clock::get()?.unix_timestamp;
 
+        let player1_key = game.player1;
+
         if wager > 0 {
             system_program::transfer(
                 CpiContext::new(
@@ -46,7 +48,7 @@ pub mod rps {
 
         emit!(GameCreated {
             game_id,
-            player1: game.player1,
+            player1: player1_key,
             wager,
         });
         Ok(())
@@ -65,7 +67,9 @@ pub mod rps {
         );
 
         let wager = game.wager;
-        game.player2 = Some(ctx.accounts.player2.key());
+        let game_id = game.game_id;
+        let player2_key = ctx.accounts.player2.key();
+        game.player2 = Some(player2_key);
         game.status = GameStatus::WaitingForCommitments;
         game.last_action = Clock::get()?.unix_timestamp;
 
@@ -83,8 +87,8 @@ pub mod rps {
         }
 
         emit!(PlayerJoined {
-            game_id: game.game_id,
-            player2: ctx.accounts.player2.key(),
+            game_id,
+            player2: player2_key,
         });
         Ok(())
     }
