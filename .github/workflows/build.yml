@@ -44,7 +44,7 @@ jobs:
       - name: Install Solana CLI (Agave)
         if: steps.cache-solana.outputs.cache-hit != 'true'
         run: |
-          # Download release tarball directly from GitHub CDN (faster than anza.xyz installer)
+          # Download tarball from GitHub CDN (faster/more reliable than anza.xyz installer)
           curl -L --retry 3 \
             "https://github.com/anza-xyz/agave/releases/download/v${{ env.SOLANA_VERSION }}/solana-release-x86_64-unknown-linux-gnu.tar.bz2" \
             -o /tmp/solana.tar.bz2
@@ -56,17 +56,45 @@ jobs:
       - name: Add Solana to PATH
         run: echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
 
+      # Cache patched platform-tools so we don't re-download + re-patch on every run
+      - name: Cache platform-tools (patched)
+        id: cache-platform-tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/solana
+          key: ${{ runner.os }}-platform-tools-patched-${{ env.SOLANA_VERSION }}
+
+      - name: Download and patch platform-tools
+        if: steps.cache-platform-tools.outputs.cache-hit != 'true'
+        run: |
+          # Trigger platform-tools download — the build will fail on edition2024
+          # but platform-tools (~500MB) will be fully downloaded first
+          cargo-build-sbf --manifest-path programs/rps/Cargo.toml 2>&1 | head -20 || true
+
+          # Locate the platform-tools cargo binary
+          PLATFORM_CARGO=$(find ~/.cache/solana -name cargo \
+            -path "*/rust/bin/cargo" 2>/dev/null | head -1)
+
+          if [ -z "$PLATFORM_CARGO" ]; then
+            echo "ERROR: could not find platform-tools cargo"
+            find ~/.cache/solana -type f -name "cargo" 2>/dev/null || true
+            exit 1
+          fi
+
+          # Replace platform-tools cargo 1.79 (can't parse edition2024)
+          # with nightly cargo (supports edition2024 manifests).
+          # cargo-build-sbf still uses platform-tools rustc for SBF compilation
+          # because it sets RUSTC= before invoking cargo.
+          NIGHTLY_CARGO=$(rustup which --toolchain nightly cargo)
+          OLD_VER=$("$PLATFORM_CARGO" --version)
+          cp "$NIGHTLY_CARGO" "$PLATFORM_CARGO"
+          NEW_VER=$("$PLATFORM_CARGO" --version)
+          echo "Patched platform-tools cargo: $OLD_VER → $NEW_VER"
+
       - name: Build RPS program
         run: |
-          # Use system nightly cargo (supports edition2024) instead of
-          # the bundled Cargo 1.79 that ships with platform-tools v1.43
-          export CARGO=$(rustup which --toolchain nightly cargo)
-          echo "Using cargo: $CARGO"
-          $CARGO --version
           solana --version
-          # Build using cargo-build-sbf with overridden cargo
           cargo-build-sbf --manifest-path programs/rps/Cargo.toml
-          # List output
           ls -la target/deploy/
 
       - name: Extract Program ID
